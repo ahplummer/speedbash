@@ -12,41 +12,23 @@ function __command_exists {
         echo 1
     fi
 }
-if [[ $(__command_exists "jq") -eq 0 ]]; then
-    echo "jq package is required"
-    exit 1
-fi
+
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 if [[ $(__command_exists "${SCRIPT_DIR}/speedtest") -eq 0 ]]; then
     echo "speedtest local installation necessary: see https://www.speedtest.net/apps/cli"
     exit 1
 fi
-${SCRIPT_DIR}/speedtest -f json-pretty > speedtest.json
-download=$(cat speedtest.json | jq -r '.download.bandwidth')
-downloadcommas=$(printf "%'d" $(echo ${download}))
-upload=$(cat speedtest.json | jq -r '.upload.bandwidth')
-uploadcommas=$(printf "%'d" $(echo ${upload}))
-pingtime=$(cat speedtest.json | jq -r '.ping.latency')
-packetloss=$(cat speedtest.json | jq -r '.packetLoss')
-servername=$(cat speedtest.json | jq -r '.server.name')
-usingVPN=$(cat speedtest.json | jq -r '.interface.isVpn')
+touch ${SCRIPT_DIR}/speedtest.out
+${SCRIPT_DIR}/speedtest > speedtest.out
+download=$(cat ${SCRIPT_DIR}/speedtest.out | grep Download | awk '{print $3" "$4}')
+upload=$(cat ${SCRIPT_DIR}/speedtest.out | grep Upload | awk '{print $3" "$4}')
+pingtime=$(cat ${SCRIPT_DIR}/speedtest.out | grep Latency | awk '{print $2" "$3}')
+packetloss=$(cat ${SCRIPT_DIR}/speedtest.out | grep "Packet Loss" | awk '{print $3}')
+servername=$(cat ${SCRIPT_DIR}/speedtest.out | grep "Server" | awk '{$1=""; print $0}')
 
-downloadStr=$(echo "Download speed (Mb/s): ${downloadcommas}")
-#echo $downloadStr
-uploadStr=$(echo "Upload speed (Mb/s): ${uploadcommas}")
-#echo $uploadStr
-servernameStr=$(echo "Server Name used: ${servername}")
-#echo $servernameStr
-pingtimeStr=$(echo "Ping time (ms): ${pingtime}")
-#echo $pingtime
-packetlossStr=$(echo "Packet loss: ${packetloss}")
-#echo $packetlossStr
-usingVPNStr=$(echo "Using VPN: ${usingVPN}")
-#echo $usingVPNStr
-runtimeStr=$(date -r speedtest.json "+%m-%d-%Y %H:%M:%S")
-#echo $runtimeStr
-slackMessage="${downloadStr}"$'\n'"${uploadStr}"$'\n'"${pingtimeStr}"$'\n'"${packetlossStr}"$'\n'"${usingVPNStr}"$'\n'"${servernameStr}"$'\n'
-slackMessageWhole=$(echo "Executed at ${runtimeStr}"$'\n'"${slackMessage}")
+runtime=$(date -r ${SCRIPT_DIR}/speedtest.out "+%m-%d-%Y %H:%M:%S")
+slackMessage="Download: ${download}"$'\n'"Upload: ${upload}"$'\n'"Ping time: ${pingtime}"$'\n'"Packet Loss: ${packetloss}"$'\n'"Server Name: ${servername}"$'\n'
+slackMessageWhole=$(echo "Executed at: ${runtime}"$'\n'"${slackMessage}")
 echo "${slackMessageWhole}"
 curl -X POST -H 'Content-type: application/json' --data '{"text":"'"$slackMessageWhole"'"}' $SLACK_HOOK
 echo $'\n'
@@ -56,6 +38,6 @@ if test -f "$FILE"; then
     echo "$FILE exists."
 else
     echo "Will create $FILE".
-    echo "Time,Download,Upload,Server,Ping,PacketLoss,UsingVPN" > $FILE
+    echo "Time,Download,Upload,Server,Ping,PacketLoss" > $FILE
 fi
-echo "${runtimeStr},${download},${upload},${servername},${pingtime},${packetloss},${usingVPN}" >> $FILE
+echo "\"${runtime}\",\"${download}\",\"${upload}\",\"${servername}\",\"${pingtime}\",\"${packetloss}\"" >> $FILE
